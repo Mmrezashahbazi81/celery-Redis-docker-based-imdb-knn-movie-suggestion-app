@@ -19,7 +19,7 @@ def load_page_with_selenium(url, wait=5):
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
 
-    driver = uc.Chrome(options=options)
+    driver = uc.Chrome(options=options,version_main=144)
 
     print(f"[INFO] Opening URL: {url}")
     driver.get(url)
