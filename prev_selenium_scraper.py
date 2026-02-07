@@ -1,67 +1,45 @@
-import os
 import time
 import re
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
+import undetected_chromedriver as uc
 from bs4 import BeautifulSoup
-import random
 
-from database import SessionLocal
+from database import SessionLocal, engine, Base
 from models import Movie
+
+#Base.metadata.create_all(bind=engine)
 
 BASE_URL = "https://www.imdb.com"
 
-# این مقدار در docker-compose ست می‌شود
-SELENIUM_HOST = os.getenv("SELENIUM_HOST", "localhost")
 
+def load_page_with_selenium(url, wait=5):
+    print("[INFO] Starting undetected Chrome...")
 
-def get_driver():
-    chrome_options = Options()
+    options = uc.ChromeOptions()
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
 
-    # شبیه مرورگر واقعی
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-infobars")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--window-size=1920,1080")
+    driver = uc.Chrome(options=options,version_main=144)
 
-    # User-Agent واقعی
-    chrome_options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    )
+    print(f"[INFO] Opening URL: {url}")
+    driver.get(url)
 
-    # زبان واقعی
-    chrome_options.add_argument("--lang=en-US,en;q=0.9")
+    print(f"[INFO] Waiting {wait} seconds for JS to load...")
+    time.sleep(wait)
 
-    # جلوگیری از شناسایی webdriver
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option("useAutomationExtension", False)
+    # Scroll to bottom
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    while True:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
 
-    driver = webdriver.Remote(
-        command_executor=f"http://{SELENIUM_HOST}:4444/wd/hub",
-        options=chrome_options
-    )
+    print("[INFO] Page fully loaded.")
+    return driver, driver.page_source
 
-    # حذف ویژگی webdriver از navigator
-    driver.execute_cdp_cmd(
-        "Page.addScriptToEvaluateOnNewDocument",
-        {
-            "source": """
-                Object.defineProperty(navigator, 'webdriver', {
-                    get: () => undefined
-                })
-            """
-        }
-    )
-
-    return driver
-
-
-time.sleep(1 + random.random() * 1.5)
 
 def extract_summary(driver, movie_url):
     try:
@@ -85,14 +63,12 @@ def extract_summary(driver, movie_url):
 
 
 def scrape_top_movies(limit=250):
-    time.sleep(2 + random.random() * 2)
     print(f"[INFO] Starting IMDb Top 250 scrape (limit={limit})")
 
-    driver = get_driver()
-    driver.get(f"{BASE_URL}/chart/top/")
-    time.sleep(5)
+    url = f"{BASE_URL}/chart/top/"
+    driver, html = load_page_with_selenium(url, wait=7)
 
-    soup = BeautifulSoup(driver.page_source, "html.parser")
+    soup = BeautifulSoup(html, "html.parser")
     print("[DEBUG] Page title:", soup.title.string if soup.title else "NO TITLE")
 
     movie_list_parent = soup.find("ul", class_=re.compile(r"ipc-metadata-list"))
@@ -170,6 +146,9 @@ def scrape_top_movies(limit=250):
 
             movie_url = BASE_URL + str(relative_link) if relative_link else None
 
+            # -------------------------
+            # Extract summary
+            # -------------------------
             summary = extract_summary(driver, movie_url) if movie_url else ""
 
             print(f"[INFO] Movie #{count+1}: {title} ({year}) Rating={rating}")

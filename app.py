@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify
 from database import SessionLocal
 from models import Movie
+from tasks import add, scrape_movies_task
+from classifier import build_classifier, analyze_summary
+
 
 app = Flask(__name__)
 
@@ -20,17 +23,19 @@ def get_movies():
 def home():
     return "Welcome to the IMDB API! Try /movies"
 
-from selenium_scraper import scrape_top_movies
 
 @app.post("/scrape")
 def scrape_movies():
     #limit = int(request.args.get("limit", 250))
-    limit = 250
-    scrape_top_movies(limit=limit)
-    return {"message": f"Scraped {limit} movies and saved to DB"}
+    limit = 1
+#    scrape_top_movies(limit=limit)
+#    return {"message": f"Scraped {limit} movies and saved to DB"}
+    result = scrape_movies_task.delay(limit=limit) # ✅ فقط تسک Celery 
+    return { 
+            "message": f"Scrape task queued for {limit} movies",
+            "task_id": result.id
+            }
 
-
-from classifier import build_classifier, analyze_summary
 
 movies, tf_idf_vectors = build_classifier()
 
@@ -42,10 +47,6 @@ def predict():
     results = analyze_summary(summary, movies, tf_idf_vectors, k=k)
     return jsonify(results)
 
-from flask import Flask, jsonify
-from tasks import add
-
-app = Flask(__name__)
 
 @app.route("/test-task")
 def test_task():
