@@ -1,4 +1,3 @@
-from classifier import build_and_save_classifier
 from flask import Flask, request, jsonify
 from tasks import add, scrape_movies_task
 from classifier import analyze_summary
@@ -67,10 +66,5 @@ def test_task():
     return jsonify({"task_id": result.id})
 
 if __name__ == "__main__":
-    # When the app starts, check if we need to build the cache
-    print("Checking if NLP cache needs to be initialized...")
-    build_and_save_classifier()
-    
     # In Docker, we use 0.0.0.0 to be accessible from the host
     app.run(host="0.0.0.0", port=5000, debug=False)
-    
