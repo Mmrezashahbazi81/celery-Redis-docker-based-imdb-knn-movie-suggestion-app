@@ -26,11 +26,11 @@ def home():
 
 @app.post("/scrape")
 def scrape_movies():
-    #limit = int(request.args.get("limit", 250))
-    limit = 1
+    limit = int(request.args.get("limit", 250))
+    limi = limit
 #    scrape_top_movies(limit=limit)
 #    return {"message": f"Scraped {limit} movies and saved to DB"}
-    result = scrape_movies_task.delay(limit=limit) # ✅ فقط تسک Celery 
+    result = scrape_movies_task.delay(limi) # ✅ فقط تسک Celery 
     return { 
             "message": f"Scrape task queued for {limit} movies",
             "task_id": result.id

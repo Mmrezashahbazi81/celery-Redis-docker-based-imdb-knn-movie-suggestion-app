@@ -10,7 +10,7 @@ import random
 from database import SessionLocal
 from models import Movie
 
-BASE_URL = "https://www.imdb.com"
+BASE_URL = "https://critics.com/thisyear/"
 
 # این مقدار در docker-compose ست می‌شود
 SELENIUM_HOST = os.getenv("SELENIUM_HOST", "localhost")

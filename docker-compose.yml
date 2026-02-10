@@ -18,6 +18,9 @@ services:
     build: .
     container_name: celery_worker
     command: celery -A tasks worker --loglevel=info
+    # This line is the magic: it lets the container see your host machine
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - selenium
@@ -26,3 +29,5 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0
       - SELENIUM_HOST=selenium
+      # We point the worker to your machine's IP (via host.docker.internal)
+      - DATABASE_URL=postgresql://postgres:123@host.docker.internal:5432/imdb_db
