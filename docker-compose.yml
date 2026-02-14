@@ -1,12 +1,61 @@
 version: "3.9"
 
 services:
-  redis:
-    image: redis:latest
-    container_name: redis
+  # ---------------------------------------
+  # 1. Load Balancer (Nginx)
+  # ---------------------------------------
+  nginx:
+    image: nginx:alpine
     ports:
-      - "6379:6379"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
 
+  # ---------------------------------------
+  # 2. Flask Application (Multi-App)
+  # ---------------------------------------
+  web:
+    build: .
+    command: gunicorn --bind 0.0.0.0:5000 --workers 2 app:app
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - SELENIUM_HOST=selenium
+      - DATABASE_URL=postgresql://postgres:123@db:5432/imdb_db
+    depends_on:
+      - redis
+      - db
+      - selenium
+    deploy:
+      replicas: 2
+    restart: always
+
+  # ---------------------------------------
+  # 3. Celery Worker (Multi-Worker)
+  # ---------------------------------------
+  worker:
+    build: .
+    command: celery -A tasks worker --loglevel=info
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - SELENIUM_HOST=selenium
+      - DATABASE_URL=postgresql://postgres:123@db:5432/imdb_db
+    depends_on:
+      - redis
+      - selenium
+      - db
+    deploy:
+      replicas: 2
+    restart : always
+
+  # ---------------------------------------
+  # 4. Selenium Grid
+  # ---------------------------------------
   selenium:
     image: selenium/standalone-chrome:latest
     container_name: selenium
@@ -14,20 +63,29 @@ services:
     ports:
       - "4444:4444"
 
-  worker:
-    build: .
-    container_name: celery_worker
-    command: celery -A tasks worker --loglevel=info
-    # This line is the magic: it lets the container see your host machine
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    depends_on:
-      - redis
-      - selenium
+  # ---------------------------------------
+  # 5. Redis
+  # ---------------------------------------
+  redis:
+    image: redis:latest
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  # ---------------------------------------
+  # 6. Database (PostgreSQL)
+  # ---------------------------------------
+  db:
+    image: postgres:13
+    container_name: postgres_db
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - SELENIUM_HOST=selenium
-      # We point the worker to your machine's IP (via host.docker.internal)
-      - DATABASE_URL=postgresql://postgres:123@host.docker.internal:5432/imdb_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123
+      - POSTGRES_DB=imdb_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:

@@ -2,8 +2,10 @@ from classifier import build_and_save_classifier
 from flask import Flask, request, jsonify
 from tasks import add, scrape_movies_task
 from classifier import analyze_summary
-from database import SessionLocal
-from models import Movie
+from database import SessionLocal, engine
+from models import Movie, Base
+
+Base.metadata.create_all(bind=engine)
 
 app = Flask(__name__)
 
