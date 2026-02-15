@@ -36,3 +36,7 @@ celery
 redis
 gunicorn
 spacy
+fastapi
+uvicorn[standard]
+pydantic
+pyjwt

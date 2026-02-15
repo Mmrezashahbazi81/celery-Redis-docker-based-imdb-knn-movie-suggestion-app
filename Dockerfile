@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# به خط پایینی --no-cache-dir رو اضافه کن واسه پروداکشن
+RUN pip install  --default-timeout=1000 -r requirements.txt
 RUN python -m spacy download en_core_web_sm
 
 COPY app/ .

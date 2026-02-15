@@ -11,12 +11,13 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - web
+      - flask-web
+      - fast-web  # <--- وابستگی جدید
 
   # ---------------------------------------
-  # 2. Flask Application (Multi-App)
+  # 2. Flask Application (Legacy)
   # ---------------------------------------
-  web:
+  flask-web:
     build: .
     command: gunicorn --bind 0.0.0.0:5000 --workers 2 app:app
     environment:
@@ -30,11 +31,32 @@ services:
       - db
       - selenium
     deploy:
-      replicas: 2
+      replicas: 1  # یکی کافیست
+    
+
+  # ---------------------------------------
+  # 3. FastAPI Application (New) - اضافه شده
+  # ---------------------------------------
+  fast-web:
+    build: .  # از همان Dockerfile استفاده میکند (کدها مشترک)
+    # اجرای Uvicorn روی پورت 8000
+    command: uvicorn fast_app:app --host 0.0.0.0 --port 8000
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - SELENIUM_HOST=selenium
+      - DATABASE_URL=postgresql://postgres:123@db:5432/imdb_db
+    depends_on:
+      - redis
+      - db
+      - selenium
+    deploy:
+      replicas: 1
     restart: always
 
   # ---------------------------------------
-  # 3. Celery Worker (Multi-Worker)
+  # 4. Celery Worker (Shared)
   # ---------------------------------------
   worker:
     build: .
@@ -51,11 +73,9 @@ services:
       - db
     deploy:
       replicas: 2
-    restart : always
 
-  # ---------------------------------------
-  # 4. Selenium Grid
-  # ---------------------------------------
+
+  # ... (بقیه سرویس‌ها مثل selenium, redis, db بدون تغییر) ...
   selenium:
     image: selenium/standalone-chrome:latest
     container_name: selenium
@@ -63,18 +83,12 @@ services:
     ports:
       - "4444:4444"
 
-  # ---------------------------------------
-  # 5. Redis
-  # ---------------------------------------
   redis:
     image: redis:latest
     container_name: redis
     ports:
       - "6379:6379"
 
-  # ---------------------------------------
-  # 6. Database (PostgreSQL)
-  # ---------------------------------------
   db:
     image: postgres:13
     container_name: postgres_db
