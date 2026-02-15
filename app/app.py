@@ -63,6 +63,17 @@ def get_movies():
     db.close()
     return jsonify(data)
 
+@app.route("/movies", methods=["DELETE"])
+def delete_movies():
+    try:
+        db = SessionLocal()
+        num_deleted = db.query(Movie).delete()
+        db.commit()
+        db.close()
+        return {"message": f"Deleted {num_deleted} movies"}
+    except Exception as e:
+        return {"error": str(e)}, 500
+
 @app.route("/test-task")
 def test_task():
     result = add.delay(10, 20)

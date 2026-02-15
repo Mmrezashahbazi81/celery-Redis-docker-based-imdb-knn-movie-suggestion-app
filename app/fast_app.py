@@ -5,6 +5,7 @@ from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, Header, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import delete
 
 # فایل‌های پروژه
 from database import SessionLocal
@@ -151,3 +152,16 @@ def verify_token(authorization: str = Header(None)):
         raise HTTPException(status_code=401, detail="Token expired")
     except (jwt.InvalidTokenError, ValueError):
         raise HTTPException(status_code=401, detail="Invalid token")
+    
+# ==========================================
+#              Delete db data's
+# ==========================================    
+@app.delete("/movies")
+def delete_movies(db: Session = Depends(get_db)):
+    try:
+        num_deleted = db.query(Movie).delete()
+        db.commit()
+        return {"message": f"Deleted {num_deleted} movies"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

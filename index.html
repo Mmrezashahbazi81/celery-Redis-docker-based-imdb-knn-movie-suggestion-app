@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Scraper Dashboard</title>
+    <style>
+        body { font-family: sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f4f4f4; }
+        .container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        h2 { border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-top: 0; }
+        .hidden { display: none; }
+        input, button, textarea { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+        button { cursor: pointer; background: #007bff; color: white; border: none; font-weight: bold; border-radius: 4px; }
+        button:hover { background: #0056b3; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c82333; }
+        button.secondary { background: #6c757d; }
+        #movie-list { max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; background: #fafafa; }
+        .movie-item { padding: 10px; border-bottom: 1px solid #eee; }
+        .token-box { background: #e9ecef; padding: 10px; border-radius: 4px; word-break: break-all; font-family: monospace; font-size: 0.9em; margin-bottom: 10px; }
+        .timer { font-size: 1.2em; font-weight: bold; color: #28a745; }
+        .timer.expired { color: #dc3545; }
+        .row { display: flex; gap: 10px; }
+    </style>
+</head>
+<body>
+
+<!-- LOGIN SECTION -->
+<div class="container" id="login-section">
+    <h2>Login</h2>
+    <input type="text" id="username" placeholder="Username (admin)" value="admin">
+    <input type="password" id="password" placeholder="Password (admin)" value="admin">
+    <button onclick="login()">Login</button>
+    <p id="login-msg" style="color: red;"></p>
+</div>
+
+<!-- DASHBOARD SECTION -->
+<div class="container hidden" id="dashboard-section">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Dashboard</h2>
+        <button onclick="logout()" class="danger" style="width: auto;">Logout</button>
+    </div>
+
+    <!-- TOKEN INFO -->
+    <div class="container" style="background: #f8f9fa; border: 1px solid #dee2e6;">
+        <h3>Token Status</h3>
+        <div class="row">
+            <div style="flex: 1;">
+                <strong>Access Token (Expires in: <span id="timer" class="timer">15:00</span>)</strong>
+                <div class="token-box" id="display-access">...</div>
+            </div>
+            <div style="flex: 1;">
+                <strong>Refresh Token</strong>
+                <div class="token-box" id="display-refresh">...</div>
+            </div>
+        </div>
+        
+        <div class="row" style="align-items: flex-end;">
+            <div style="flex: 2;">
+                <label>Manual Refresh Token Input:</label>
+                <input type="text" id="manual-refresh-token" placeholder="Paste Refresh Token here to renew access...">
+            </div>
+            <div style="flex: 1;">
+                <button onclick="manualRefreshToken()" class="secondary">Renew Access Token</button>
+            </div>
+        </div>
+        <p id="refresh-msg"></p>
+    </div>
+    
+    <!-- ACTIONS -->
+    <div class="row">
+        <!-- SCRAPE -->
+        <div class="container" style="flex: 1;">
+            <h3>1. Scrape Movies</h3>
+            <label>Number of movies:</label>
+            <input type="number" id="scrape-limit" value="10" min="1" max="100">
+            <button onclick="scrapeMovies()">Start Scraping</button>
+            <p id="scrape-msg"></p>
+        </div>
+
+        <!-- DELETE -->
+        <div class="container" style="flex: 1;">
+            <h3>2. Manage Database</h3>
+            <p>Current Movies in DB: <b id="db-count">?</b></p>
+            <button onclick="deleteAllMovies()" class="danger">Delete ALL Movies</button>
+            <p id="delete-msg"></p>
+        </div>
+    </div>
+
+    <!-- LIST -->
+    <div class="container">
+        <h3>3. Movie List (Protected)</h3>
+        <button onclick="getMovies()">Load Movies from DB</button>
+        <div id="movie-list"></div>
+    </div>
+
+    <!-- PREDICT -->
+    <div class="container">
+        <h3>4. Predict Genre/Similarity</h3>
+        <textarea id="summary-input" rows="3" placeholder="Enter movie summary..."></textarea>
+        <button onclick="predict()">Predict</button>
+        <pre id="predict-result" style="background: #eee; padding: 10px;"></pre>
+    </div>
+</div>
+
+<script>
+    const API_URL = ""; // Relative path for Nginx
+
+    let tokenTimerInterval;
+
+    // --- AUTH FUNCTIONS ---
+
+    async function login() {
+        const user = document.getElementById('username').value;
+        const pass = document.getElementById('password').value;
+        
+        try {
+            const res = await fetch(`${API_URL}/auth/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            
+            if (!res.ok) throw new Error("Login failed");
+            
+            const data = await res.json();
+            handleLoginSuccess(data);
+        } catch (err) {
+            document.getElementById('login-msg').innerText = err.message;
+        }
+    }
+
+    function handleLoginSuccess(data) {
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
+        
+        // Set Expiry time (15 mins from now)
+        const expiryTime = Date.now() + (15 * 60 * 1000);
+        localStorage.setItem('token_expiry', expiryTime);
+
+        updateTokenDisplay();
+        startTimer();
+        showDashboard();
+    }
+
+    function updateTokenDisplay() {
+        document.getElementById('display-access').innerText = localStorage.getItem('access_token');
+        document.getElementById('display-refresh').innerText = localStorage.getItem('refresh_token');
+        document.getElementById('manual-refresh-token').value = localStorage.getItem('refresh_token');
+    }
+
+    function startTimer() {
+        clearInterval(tokenTimerInterval);
+        
+        const timerElem = document.getElementById('timer');
+        
+        tokenTimerInterval = setInterval(() => {
+            const expiry = parseInt(localStorage.getItem('token_expiry') || 0);
+            const now = Date.now();
+            const diff = expiry - now;
+
+            if (diff <= 0) {
+                timerElem.innerText = "EXPIRED";
+                timerElem.classList.add('expired');
+                clearInterval(tokenTimerInterval);
+            } else {
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                timerElem.innerText = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+                timerElem.classList.remove('expired');
+            }
+        }, 1000);
+    }
+
+    async function manualRefreshToken() {
+        const refreshToken = document.getElementById('manual-refresh-token').value;
+        const msg = document.getElementById('refresh-msg');
+        msg.innerText = "Refreshing...";
+
+        try {
+            const res = await fetch(`${API_URL}/auth/refresh`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+
+            if (!res.ok) throw new Error("Invalid Refresh Token");
+
+            const data = await res.json();
+            handleLoginSuccess(data); // Update tokens and timer
+            msg.innerText = "Success! Token renewed.";
+            msg.style.color = "green";
+        } catch (e) {
+            msg.innerText = e.message;
+            msg.style.color = "red";
+        }
+    }
+
+    function logout() {
+        localStorage.clear();
+        clearInterval(tokenTimerInterval);
+        location.reload();
+    }
+
+    // --- API FUNCTIONS ---
+
+    async function authenticatedFetch(url, options = {}) {
+        let token = localStorage.getItem('access_token');
+        if (!options.headers) options.headers = {};
+        options.headers['Authorization'] = `Bearer ${token}`;
+
+        let res = await fetch(url, options);
+
+        // Auto-retry with refresh logic could go here
+        return res;
+    }
+
+    async function scrapeMovies() {
+        const limit = document.getElementById('scrape-limit').value;
+        const msg = document.getElementById('scrape-msg');
+        msg.innerText = "Requesting scrape...";
+        
+        const res = await authenticatedFetch(`${API_URL}/scrape?limit=${limit}`, { method: 'POST' });
+        
+        if (res.ok) {
+            const data = await res.json();
+            msg.innerText = `Task Started! ID: ${data.task_id}`;
+            msg.style.color = "green";
+        } else {
+            msg.innerText = "Failed to start task.";
+            msg.style.color = "red";
+        }
+    }
+
+    async function deleteAllMovies() {
+        if (!confirm("Are you sure you want to delete ALL movies? This cannot be undone.")) return;
+
+        const msg = document.getElementById('delete-msg');
+        msg.innerText = "Deleting...";
+
+        const res = await authenticatedFetch(`${API_URL}/movies`, { method: 'DELETE' });
+        
+        if (res.ok) {
+            msg.innerText = "All movies deleted.";
+            msg.style.color = "green";
+            getMovies(); // Refresh list (should be empty)
+        } else {
+            msg.innerText = "Failed to delete.";
+            msg.style.color = "red";
+        }
+    }
+
+    async function getMovies() {
+        const list = document.getElementById('movie-list');
+        list.innerHTML = "Loading...";
+        
+        const res = await authenticatedFetch(`${API_URL}/movies`);
+        if (res.ok) {
+            const movies = await res.json();
+            document.getElementById('db-count').innerText = movies.length;
+            
+            if (movies.length === 0) {
+                list.innerHTML = "<i>No movies found in database.</i>";
+                return;
+            }
+
+            list.innerHTML = movies.map(m => 
+                `<div class="movie-item">
+                    <b>${m.title}</b> <span style="color:#666">(${m.year})</span>
+                    <br><small>${m.summary}</small>
+                </div>`
+            ).join('');
+        } else {
+            list.innerHTML = "<span style='color:red'>Failed to load (Check Token)</span>";
+        }
+    }
+
+    async function predict() {
+        const text = document.getElementById('summary-input').value;
+        const res = await authenticatedFetch(`${API_URL}/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary: text, k: 5 })
+        });
+        
+        const data = await res.json();
+        document.getElementById('predict-result').innerText = JSON.stringify(data, null, 2);
+    }
+
+    function showDashboard() {
+        document.getElementById('login-section').classList.add('hidden');
+        document.getElementById('dashboard-section').classList.remove('hidden');
+    }
+
+    // Init
+    if (localStorage.getItem('access_token')) {
+        updateTokenDisplay();
+        startTimer();
+        showDashboard();
+    }
+</script>
+
+</body>
+</html>
